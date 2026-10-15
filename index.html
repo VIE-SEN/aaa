@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>jsm.json 地址</title>
+    <title>文件地址</title>
     <style>
         * {
             margin: 0;
@@ -31,8 +31,14 @@
             text-align: center;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
         }
+        .row {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 32px;
+        }
         .copy-btn {
-            margin-top: 24px;
+            margin-top: 16px;
             padding: 10px 28px;
             font-size: 15px;
             color: #fff;
@@ -54,17 +60,35 @@
     </style>
 </head>
 <body>
-    <div class="path-box" id="path">加载中...</div>
-    <button class="copy-btn" onclick="copyPath()">复制到剪贴板</button>
+    <div id="list"></div>
     <div class="toast" id="toast">已复制 ✓</div>
 
     <script>
-        // 根据当前服务器地址动态生成 jsm.json 的完整 URL
-        const jsmUrl = new URL('jsm.json', window.location.href).href;
-        document.getElementById('path').textContent = jsmUrl;
+        // 根据当前服务器地址动态生成各文件的完整 URL
+        const files = ['jsm.json', 'tvboxtv.txt'];
+        const list = document.getElementById('list');
 
-        function copyPath() {
-            const text = jsmUrl;
+        files.forEach(name => {
+            const url = new URL(name, window.location.href).href;
+
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            const box = document.createElement('div');
+            box.className = 'path-box';
+            box.textContent = url;
+
+            const btn = document.createElement('button');
+            btn.className = 'copy-btn';
+            btn.textContent = '复制到剪贴板';
+            btn.addEventListener('click', () => copyPath(url));
+
+            row.appendChild(box);
+            row.appendChild(btn);
+            list.appendChild(row);
+        });
+
+        function copyPath(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(text).then(showToast);
             } else {
