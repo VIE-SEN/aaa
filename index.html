@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jsm.json 地址</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: "Microsoft YaHei", sans-serif;
+            background: #f5f6f8;
+        }
+        .path-box {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px 24px;
+            font-size: 16px;
+            color: #333;
+            word-break: break-all;
+            max-width: 80%;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+        .copy-btn {
+            margin-top: 24px;
+            padding: 10px 28px;
+            font-size: 15px;
+            color: #fff;
+            background: #1677ff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover {
+            background: #4096ff;
+        }
+        .toast {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #52c41a;
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="path-box" id="path">加载中...</div>
+    <button class="copy-btn" onclick="copyPath()">复制到剪贴板</button>
+    <div class="toast" id="toast">已复制 ✓</div>
+
+    <script>
+        // 根据当前服务器地址动态生成 jsm.json 的完整 URL
+        const jsmUrl = new URL('jsm.json', window.location.href).href;
+        document.getElementById('path').textContent = jsmUrl;
+
+        function copyPath() {
+            const text = jsmUrl;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(showToast);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = text;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                document.body.removeChild(input);
+                showToast();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.style.visibility = 'visible';
+            setTimeout(() => {
+                toast.style.visibility = 'hidden';
+            }, 1500);
+        }
+    </script>
+</body>
+</html>
