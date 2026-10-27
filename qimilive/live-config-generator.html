@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FongMi 直播配置生成器</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        background:#f0f2f5; min-height:100vh; padding:30px 16px; color:#222;
+    }
+    .wrap { max-width:960px; margin:0 auto; }
+    h1 { font-size:22px; margin-bottom:6px; }
+    .sub { font-size:13px; color:#777; margin-bottom:20px; }
+    .card {
+        background:#fff; border-radius:10px; padding:20px;
+        box-shadow:0 1px 6px rgba(0,0,0,.07); margin-bottom:16px;
+    }
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .row:last-child { margin-bottom:0; }
+    .field { flex:1; min-width:260px; }
+    label { display:block; font-size:13px; color:#555; margin-bottom:4px; }
+    input[type=text] {
+        width:100%; padding:9px 12px; font-size:14px;
+        border:1px solid #d9d9d9; border-radius:6px; outline:none;
+    }
+    input[type=text]:focus { border-color:#1677ff; }
+    button {
+        padding:9px 20px; font-size:14px; border:none; border-radius:6px;
+        background:#1677ff; color:#fff; cursor:pointer;
+    }
+    button:hover { opacity:.88; }
+    button.gray { background:#666; }
+    button.green { background:#2e9e5b; }
+    button:disabled { background:#bbb; cursor:not-allowed; }
+    .tips { font-size:12px; color:#999; margin-top:8px; line-height:1.7; }
+    #log {
+        font-size:12px; background:#0d1117; color:#9fd49f; border-radius:6px;
+        padding:10px 12px; margin-top:12px; max-height:130px; overflow:auto;
+        white-space:pre-wrap; word-break:break-all; display:none;
+    }
+    .stats { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; }
+    .stat { font-size:13px; background:#f5f7fa; border-radius:6px; padding:6px 12px; }
+    .stat b { color:#1677ff; }
+    textarea {
+        width:100%; height:110px; padding:10px; font-size:13px; font-family:Consolas,monospace;
+        border:1px solid #d9d9d9; border-radius:6px; resize:vertical;
+    }
+    #preview {
+        height:340px; background:#0d1117; color:#c9e3c9; border:none;
+    }
+    .drop {
+        border:2px dashed #bbb; border-radius:8px; padding:18px; text-align:center;
+        font-size:13px; color:#888; margin-top:6px;
+    }
+    .drop.on { border-color:#1677ff; color:#1677ff; }
+    .opt { font-size:13px; color:#555; display:flex; align-items:center; gap:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <h1>FongMi TV 直播配置生成器</h1>
+    <div class="sub">获取直播源 ZIP/TXT → 解析频道列表 → 生成 FongMi TV 兼容的 LiveConfig JSON（<a href="https://fongmi.github.io/TV/config/#formats" target="_blank">格式规范</a>）</div>
+
+    <div class="card">
+        <div class="row">
+            <div class="field">
+                <label>直播源地址（ZIP / TXT / M3U / JSON）</label>
+                <input type="text" id="srcUrl" value="http://207.56.16.135:9999/tv/zip/source_20260306155148.zip">
+            </div>
+            <div class="field" style="max-width:250px;">
+                <label>ZIP 解压密码（APK 反编译提取）</label>
+                <input type="text" id="zipPass" value="DBhkhdnefkhfq,#%">
+            </div>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label>配置名称</label>
+                <input type="text" id="liveName" value="奇米直播">
+            </div>
+            <div class="field">
+                <label>EPG 节目单地址（支持 {name} {date} 占位符）</label>
+                <input type="text" id="epgUrl" value="http://207.56.16.135:9999/tv/diyp.php?ch={name}&date={date}">
+            </div>
+            <div class="field">
+                <label>APK 更新地址（获取配置后自动填入）</label>
+                <div style="display:flex; gap:6px;">
+                    <input type="text" id="apkUrl" placeholder="等待从配置节点获取…" style="flex:1;">
+                    <button class="gray" onclick="downloadApk()">下载</button>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <button id="btnFetch" onclick="doFetch()">1. 获取并解析</button>
+            <button class="green" onclick="refreshConfig()">刷新最新配置(双节点)</button>
+            <button class="gray" onclick="fileInput.click()">上传 ZIP/TXT 文件</button>
+            <button class="gray" onclick="togglePaste()">粘贴 TXT 文本</button>
+            <span class="opt"><input type="checkbox" id="optDedup" checked>同组同名频道合并线路</span>
+        </div>
+        <div class="row">
+            <span class="opt"><input type="checkbox" id="optFilter" checked>过滤广告频道</span>
+            <div class="field">
+                <input type="text" id="filterKw" placeholder="关键词,逗号分隔,匹配频道名或URL">
+                <div class="tips" id="kwDefault" style="display:none"></div>
+            </div>
+        </div>
+        <input type="file" id="fileInput" accept=".zip,.txt,.m3u,.json" style="display:none">
+        <div class="drop" id="dropZone">或将文件拖拽到此处（zip / txt / m3u / json）</div>
+        <div id="pasteBox" style="display:none; margin-top:10px;">
+            <textarea id="pasteText" placeholder="粘贴 TXT 直播源内容：&#10;央视频道,#genre#&#10;CCTV-1,http://...&#10;CCTV-2,http://a#http://b"></textarea>
+            <div style="margin-top:8px;"><button class="green" onclick="parsePasted()">解析粘贴内容</button></div>
+        </div>
+        <div id="log"></div>
+        <div class="tips" id="tips">浏览器有跨域(CORS)限制，若直接获取失败：手动下载源文件（浏览器地址栏打开链接另存为），再点「上传」或拖入即可；TXT 文本也可直接粘贴解析。</div>
+    </div>
+
+    <div class="card">
+        <div class="row" style="align-items:flex-end;">
+            <div class="field"><label>解析结果</label></div>
+            <button class="green" id="btnGen" onclick="generate()" disabled>2. 生成 FongMi JSON</button>
+            <button id="btnDown" onclick="downloadJson()" disabled>3. 下载 JSON</button>
+            <button class="gray" id="btnCopy" onclick="copyJson()" disabled>复制</button>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div style="margin-top:12px;">
+            <textarea id="preview" readonly placeholder="生成的 JSON 预览将显示在这里…"></textarea>
+        </div>
+    </div>
+</div>
+
+<script>
+// ================= 状态 =================
+let groups = null;      // Map<groupName, Map<chName, urls[]>>
+let lastJson = '';
+let filteredCount = 0;
+const DEFAULT_FILTER = 'applive,甄选,好物,福利,会员专享,今日推荐,精品推荐,优享,养生馆,严选,银龄,美好生活,健康有约,健康在线';
+
+const $ = id => document.getElementById(id);
+$('filterKw').value = DEFAULT_FILTER;
+
+function getFilterKws() {
+    if (!$('optFilter').checked) return [];
+    return $('filterKw').value.split(/[,，\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+function isAd(chName, urls) {
+    const kws = getFilterKws();
+    if (!kws.length) return false;
+    const hay = (chName + ' ' + urls.join(' ')).toLowerCase();
+    return kws.some(k => hay.includes(k));
+}
+function log(msg, err) {
+    const el = $('log');
+    el.style.display = 'block';
+    el.textContent += (el.textContent ? '\n' : '') + msg;
+    el.style.color = err ? '#ff8f8f' : '#9fd49f';
+    el.scrollTop = el.scrollHeight;
+}
+
+// ================= 配置双节点刷新（反编译发现的更新链路） =================
+const CONFIG_NODES = [
+    'http://207.56.13.146:9999/qmtv/config.json',   // 节点1: base_ip + /qmtv/config.json
+    'http://qmtv.tvbus.cc/qmtv/config.json'         // 节点2: base_domain + tvbus.cc
+];
+async function tryDownload(url) {
+    log('正在获取: ' + url);
+    const resp = await fetch('/fetch?url=' + encodeURIComponent(url));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    log('下载成功, ' + buf.byteLength + ' 字节');
+    await handleBuffer(buf, url);
+}
+
+async function doFetch() {
+    $('btnFetch').disabled = true;
+    $('log').textContent = '';
+    reset();
+
+    // 1) 手动填写的地址
+    const manual = $('srcUrl').value.trim();
+    if (manual) {
+        try {
+            await tryDownload(manual);
+            $('btnFetch').disabled = false;
+            return;
+        } catch (e) {
+            log('手动地址获取失败: ' + e.message + '，自动切换配置节点…', true);
+        }
+    }
+
+    // 2) 双节点配置接口 → 拉最新 source 地址重试
+    for (const node of CONFIG_NODES) {
+        try {
+            log('尝试配置节点: ' + node);
+            const resp = await fetch('/fetch?url=' + encodeURIComponent(node));
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const cfg = JSON.parse(await resp.text());
+            log('节点返回: ' + JSON.stringify(cfg).slice(0, 300));
+            if (!cfg || !cfg.source) throw new Error('响应中没有 source 字段');
+            $('srcUrl').value = cfg.source;
+            if (cfg.epg) $('epgUrl').value = cfg.epg;
+            if (cfg.apk) $('apkUrl').value = cfg.apk;
+            await tryDownload(cfg.source);
+            $('btnFetch').disabled = false;
+            return;
+        } catch (e) {
+            log('节点失败: ' + e.message, true);
+        }
+    }
+
+    // 3) 全部失败 → 引导兜底方式
+    log('所有方式均失败。可手动下载文件后「上传/拖入」页面，或直接粘贴 TXT 内容解析。', true);
+    log('提示：请确认已通过 http://127.0.0.1:8899 打开本页（本地服务器需运行中）。', true);
+    $('btnFetch').disabled = false;
+}
+function refreshConfig() { return doFetch(); }
+function downloadApk() {
+    const u = $('apkUrl').value.trim();
+    if (!/^https?:\/\//i.test(u)) return alert('暂无有效的 APK 地址，请先点「获取并解析」从配置节点获取');
+    window.open('/fetch?url=' + encodeURIComponent(u));   // 经本地服务器代理下载
+}
+
+function togglePaste() {
+    const b = $('pasteBox');
+    b.style.display = b.style.display === 'none' ? 'block' : 'none';
+}
+function parsePasted() {
+    const t = $('pasteText').value;
+    if (!t.trim()) return alert('请先粘贴内容');
+    reset();
+    ingestText(t, '粘贴文本');
+}
+
+$('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+const dz = $('dropZone');
+['dragover','dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('on'); }));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('on'); }));
+dz.addEventListener('drop', e => { if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+async function handleFile(f) {
+    reset();
+    log('读取文件: ' + f.name + ' (' + f.size + ' 字节)');
+    const buf = await f.arrayBuffer();
+    await handleBuffer(buf, f.name);
+}
+
+// ================= 分发：zip / 文本 =================
+async function handleBuffer(buf, srcName) {
+    reset();
+    const head = new Uint8Array(buf, 0, 4);
+    if (head[0] === 0x50 && head[1] === 0x4B) {           // PK zip 魔数
+        try {
+            const files = await readZip(buf);
+            log('ZIP 内共 ' + files.length + ' 个文件');
+            let hit = 0;
+            for (const f of files) {
+                if (!/\.(txt|m3u|json)$/i.test(f.name)) continue;
+                const text = decodeBytes(f.bytes);
+                if (ingestText(text, f.name)) hit++;
+            }
+            if (!hit) log('ZIP 内没有可解析的 txt/m3u/json 文件', true);
+        } catch (e) {
+            log('ZIP 解析失败: ' + e.message, true);
+        }
+    } else {
+        ingestText(decodeBytes(new Uint8Array(buf)), srcName);
+    }
+}
+
+function reset() { groups = new Map(); filteredCount = 0; refreshStats(); }
+
+// ================= TXT / M3U / JSON 解析 =================
+function ingestText(text, srcName) {
+    const t = text.trim();
+    try {
+        if (t.startsWith('[') || t.startsWith('{')) return ingestJson(t, srcName);
+        if (t.startsWith('#EXTM3U')) return ingestM3u(t, srcName);
+        return ingestTxt(t, srcName);
+    } catch (e) { log('解析 ' + srcName + ' 出错: ' + e.message, true); return false; }
+}
+
+function ingestTxt(text, srcName) {
+    let cur = '未分组', n = 0;
+    for (let raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        if (/#genre#/i.test(line)) {
+            cur = line.split(',')[0].replace(/#genre#/i, '').trim() || '未分组';
+            continue;
+        }
+        const ci = line.indexOf(',');
+        if (ci < 1) continue;
+        const ch = line.slice(0, ci).trim();
+        const urls = line.slice(ci + 1).split('#').map(s => s.trim()).filter(Boolean);
+        if (ch && urls.length) { addCh(cur, ch, urls); n++; }
+    }
+    log((srcName + ' → TXT 解析: ' + n + ' 个频道').trim());
+    refreshStats();
+    return n > 0;
+}
+
+function ingestM3u(text, srcName) {
+    let cur = '未分组', name = '', n = 0;
+    for (let raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        if (line.startsWith('#EXTINF')) {
+            const g = /group-title="([^"]*)"/i.exec(line);
+            cur = (g && g[1]) || '未分组';
+            name = line.slice(line.lastIndexOf(',') + 1).trim();
+            continue;
+        }
+        if (line.startsWith('#')) continue;
+        if (name && /^https?:/i.test(line)) { addCh(cur, name, [line]); n++; name = ''; }
+    }
+    log(srcName + ' → M3U 解析: ' + n + ' 个频道');
+    refreshStats();
+    return n > 0;
+}
+
+function ingestJson(text, srcName) {
+    const data = JSON.parse(text);
+    let n = 0;
+    const walk = list => {
+        for (const g of (list || [])) {
+            const gName = g.name || g.group || '未分组';
+            for (const ch of (g.channel || g.channels || [])) {
+                const urls = (ch.urls || []).map(u => typeof u === 'string' ? u : (u.url || '')).filter(Boolean);
+                if (ch.name && urls.length) { addCh(gName, ch.name, urls); n++; }
+            }
+        }
+    };
+    if (Array.isArray(data)) walk(data);
+    else if (data.lives) data.lives.forEach(l => walk(l.groups || l.channels && [{ name: l.name || l.group, channel: l.channels }]));
+    else if (data.groups) walk(data.groups);
+    log(srcName + ' → JSON 解析: ' + n + ' 个频道');
+    refreshStats();
+    return n > 0;
+}
+
+function addCh(groupName, chName, urls) {
+    if (isAd(chName, urls)) { filteredCount++; return; }
+    if (!groups.has(groupName)) groups.set(groupName, new Map());
+    const m = groups.get(groupName);
+    if ($('optDedup').checked && m.has(chName)) m.get(chName).push(...urls);
+    else m.set(chName, urls.slice());
+}
+
+// ================= 纯 JS ZIP 解析（STORE / DEFLATE / ZipCrypto / WinZip-AES） =================
+async function readZip(buf) {
+    const v = new DataView(buf);
+    let eocd = -1;
+    for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--)
+        if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error('ZIP 目录未找到');
+    const count = v.getUint16(eocd + 10, true);
+    let p = v.getUint32(eocd + 16, true);
+    const td = new TextDecoder(), out = [];
+    const pass = $('zipPass').value;
+    const passBytes = new TextEncoder().encode(pass);
+    for (let n = 0; n < count; n++) {
+        if (v.getUint32(p, true) !== 0x02014b50) break;
+        const flag = v.getUint16(p + 8, true);
+        let method = v.getUint16(p + 10, true);
+        const crc = v.getUint32(p + 16, true) >>> 0;
+        const compSize = v.getUint32(p + 20, true);
+        const modTime = v.getUint16(p + 12, true);
+        const nameLen = v.getUint16(p + 28, true), extraLen = v.getUint16(p + 30, true), cmtLen = v.getUint16(p + 32, true);
+        const loff = v.getUint32(p + 42, true);
+        const name = td.decode(new Uint8Array(buf, p + 46, nameLen));
+        const dataStart = loff + 30 + v.getUint16(loff + 26, true) + v.getUint16(loff + 28, true);
+        if (!name.endsWith('/') && compSize > 0) {
+            let enc = 'none';
+            if (method === 99) {          // WinZip AES: 从 extra field 0x9901 取真实压缩方法
+                for (let e = p + 30 + nameLen; e + 4 <= p + 30 + nameLen + extraLen; ) {
+                    const id = v.getUint16(e, true), sz = v.getUint16(e + 2, true);
+                    if (id === 0x9901) { method = v.getUint16(e + 9, true); enc = 'aes:' + v.getUint8(e + 8); break; }
+                    e += 4 + sz;
+                }
+                if (enc === 'none') { p += 46 + nameLen + extraLen + cmtLen; continue; }
+            } else if (flag & 1) {        // PKWARE ZipCrypto
+                enc = 'zip';
+            }
+            out.push({ name, method, compSize, dataStart, enc, modTime, crc, passBytes });
+        }
+        p += 46 + nameLen + extraLen + cmtLen;
+    }
+    for (const e of out) {
+        let raw = new Uint8Array(buf, e.dataStart, e.compSize);
+        try {
+            if (e.enc === 'zip') raw = zipCryptoDecrypt(raw, e.passBytes, (e.modTime >> 8) & 0xff, (e.crc >>> 24) & 0xff);
+            else if (e.enc.startsWith('aes')) raw = await aesDecrypt(raw, e.passBytes, +e.enc.split(':')[1]);
+        } catch (err) {
+            throw new Error('解密失败(' + e.name + '): ' + err.message + ' —— 检查解压密码');
+        }
+        let bytes;
+        try {
+            if (e.method === 0) bytes = raw;
+            else if (e.method === 8) bytes = await inflate(raw);
+            else continue;
+        } catch (err) {
+            throw new Error('解压失败(' + e.name + '): 解密后数据无效，密码可能错误');
+        }
+        e.bytes = bytes;
+    }
+    return out.map(e => ({ name: e.name, bytes: e.bytes }));
+}
+
+// ---- PKWARE ZipCrypto ----
+const CRCT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c; } return t; })();
+function zcUpd(k, b) {
+    k[0] = ((k[0] >>> 8) ^ CRCT[(k[0] ^ b) & 0xff]) >>> 0;
+    k[1] = (k[1] + (k[0] & 0xff)) >>> 0;
+    k[1] = (Math.imul(k[1], 134775813) + 1) >>> 0;
+    k[2] = ((k[2] >>> 8) ^ CRCT[(k[2] ^ (k[1] >>> 24)) & 0xff]) >>> 0;
+}
+function zipCryptoDecrypt(data, pw, chk1, chk2) {
+    if (!pw || !pw.length) throw new Error('ZIP 已加密，请填写解压密码');
+    const k = [0x12345678, 0x23456789, 0x34567890];
+    for (const b of pw) zcUpd(k, b);
+    const out = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+        const t = (k[2] | 2) >>> 0;
+        const plain = data[i] ^ (((Math.imul(t, t ^ 1) >>> 8) & 0xff));
+        out[i] = plain;
+        zcUpd(k, plain);
+    }
+    if (out.length >= 12 && out[11] !== chk1 && out[11] !== chk2) throw new Error('密码校验不通过');
+    return out.slice(12);   // 前 12 字节为加密头
+}
+
+// ---- WinZip AES（zip4j 兼容，PBKDF2-SHA1 1000 轮 + AES-CTR） ----
+async function aesDecrypt(data, pw, strength) {
+    const keyLen = strength === 1 ? 16 : strength === 2 ? 24 : 32;
+    const saltLen = strength === 1 ? 8 : strength === 2 ? 12 : 16;
+    if (data.length < saltLen + 2) throw new Error('数据过短');
+    const baseKey = await crypto.subtle.importKey('raw', pw, 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', hash: 'SHA-1', salt: data.slice(0, saltLen), iterations: 1000 },
+        baseKey, (keyLen + 16 + 2) * 8);
+    const counter = new Uint8Array(16); counter[15] = 1;   // 计数器从 1 开始
+    const aesKey = await crypto.subtle.importKey('raw', new Uint8Array(bits, 0, keyLen), 'AES-CTR', false, ['decrypt']);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CTR', counter, length: 64 }, aesKey, data.slice(saltLen + 2)));
+}
+
+async function inflate(data) {
+    const s = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(s).arrayBuffer());
+}
+function decodeBytes(bytes) {
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch (e) { try { return new TextDecoder('gbk').decode(bytes); } catch (e2) { return new TextDecoder().decode(bytes); } }
+}
+
+// ================= 统计与生成 =================
+function refreshStats() {
+    const el = $('stats');
+    if (!groups || !groups.size) { el.innerHTML = ''; $('btnGen').disabled = true; return; }
+    let ch = 0, urls = 0;
+    groups.forEach(m => { ch += m.size; m.forEach(u => urls += u.length); });
+    el.innerHTML = `<span class="stat">分组 <b>${groups.size}</b></span><span class="stat">频道 <b>${ch}</b></span><span class="stat">线路 <b>${urls}</b></span>` +
+        (filteredCount ? `<span class="stat" style="color:#c0392b">已过滤广告 <b>${filteredCount}</b></span>` : '');
+    $('btnGen').disabled = false;
+}
+
+function generate() {
+    const epg = $('epgUrl').value.trim();
+    const live = { name: $('liveName').value.trim() || '直播' };
+    if (epg) live.epg = epg;
+    live.groups = [];
+    groups.forEach((chs, gName) => {
+        const channels = [];
+        chs.forEach((urls, chName) => channels.push({ name: chName, urls: urls.slice() }));
+        live.groups.push({ name: gName, channel: channels });
+    });
+    lastJson = JSON.stringify({ lives: [live] }, null, 2);
+    $('preview').value = lastJson;
+    $('btnDown').disabled = $('btnCopy').disabled = false;
+    log('已生成 FongMi LiveConfig JSON（lives[].groups[].channel[].urls[] 结构）');
+}
+
+function downloadJson() {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lastJson], { type: 'application/json' }));
+    a.download = 'sss.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function copyJson() {
+    navigator.clipboard.writeText(lastJson).then(() => alert('已复制到剪贴板'), () => alert('复制失败，请手动选择文本复制'));
+}
+</script>
+</body>
+</html>
