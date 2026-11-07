@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<!-- saved from url=(0030)https://vie-sen.github.io/aaa/ -->
+<html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件地址</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: "Microsoft YaHei", sans-serif;
+            background: #f5f6f8;
+        }
+        .path-box {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px 24px;
+            font-size: 16px;
+            color: #333;
+            word-break: break-all;
+            max-width: 80%;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+        .row {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+        .copy-btn {
+            margin-top: 16px;
+            padding: 10px 28px;
+            font-size: 15px;
+            color: #fff;
+            background: #1677ff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover {
+            background: #4096ff;
+        }
+        .toast {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #52c41a;
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="list"><div class="row"><div class="path-box">https://vie-sen.github.io/aaa/xiaosa/api.json</div><button class="copy-btn">复制到剪贴板</button></div><div class="row"><div class="path-box">https://vie-sen.github.io/aaa/xiaosa/sss.json</div><button class="copy-btn">复制到剪贴板</button></div></div>
+    <div class="toast" id="toast">已复制 ✓</div>
+
+    <script>
+        // 根据当前服务器地址动态生成各文件的完整 URL
+        const files = ['xiaosa/api.json', 'xiaosa/sss.json'];
+        const list = document.getElementById('list');
+
+        files.forEach(name => {
+            const url = new URL(name, window.location.href).href;
+
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            const box = document.createElement('div');
+            box.className = 'path-box';
+            box.textContent = url;
+
+            const btn = document.createElement('button');
+            btn.className = 'copy-btn';
+            btn.textContent = '复制到剪贴板';
+            btn.addEventListener('click', () => copyPath(url));
+
+            row.appendChild(box);
+            row.appendChild(btn);
+            list.appendChild(row);
+        });
+
+        function copyPath(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(showToast);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = text;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                document.body.removeChild(input);
+                showToast();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.style.visibility = 'visible';
+            setTimeout(() => {
+                toast.style.visibility = 'hidden';
+            }, 1500);
+        }
+    </script>
+
+
+</body></html>
