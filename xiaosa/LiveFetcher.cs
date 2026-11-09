@@ -24,10 +24,15 @@ class Program
         "http://207.56.13.146:9999/qmtv/config.json",
         "http://qmtv.tvbus.cc/qmtv/config.json"
     };
+    // 澜露央卫(OKTV 2.6.2) 内置兜底订阅; 网络不通时回退 EXE 同目录同名本地文件
+    const string LANLU_URL = "http://txt.gt.tc/users/weidi12345678.txt";
+    const string LANLU_LOCAL = "weidi12345678.txt";
     static readonly string[] AD_KEYWORDS = new string[] {
         "applive", "甄选", "好物", "福利", "会员专享", "今日推荐", "精品推荐", "优享",
         "养生馆", "严选", "银龄", "美好生活", "健康有约", "健康在线"
     };
+    // 整组屏蔽: 分组名含以下子串时丢弃整组 (推广/垃圾分组)
+    static readonly string[] BLOCK_GROUPS = new string[] { "彩虹" };
 
     static string zipPass = ZIP_PASSWORD;
     static List<string> adKw = new List<string>(AD_KEYWORDS);
@@ -132,10 +137,14 @@ class Program
         try { FetchGulu(); }
         catch (Exception gex) { Console.WriteLine("[咕噜] 获取失败(不影响主流程): " + gex.Message); }
 
+        // 追加来源: 澜露央卫订阅 (优先网络, 失败回退本地 weidi12345678.txt)
+        try { FetchLanlu(); }
+        catch (Exception lex) { Console.WriteLine("[澜露] 获取失败(不影响主流程): " + lex.Message); }
+
         if (groups.Count == 0) throw new Exception("没有解析到任何频道");
         string json = BuildJson(groups, epg);
 
-        // 三个输出: 合并 / 仅 qmtv / 仅咕噜 (文件名跟随 -o 参数派生)
+        // 四个输出: 合并 / 仅 qmtv / 仅咕噜 / 仅澜露 (文件名跟随 -o 参数派生)
         string baseDir = Path.GetDirectoryName(outFile);
         if (string.IsNullOrEmpty(baseDir)) baseDir = AppDomain.CurrentDomain.BaseDirectory;
         string stem = Path.GetFileNameWithoutExtension(outFile);
@@ -143,25 +152,29 @@ class Program
         if (string.IsNullOrEmpty(ext)) ext = ".json";
         string qimiFile = Path.Combine(baseDir, stem + "_qimi" + ext);
         string guluFile = Path.Combine(baseDir, stem + "_gulu" + ext);
+        string lanluFile = Path.Combine(baseDir, stem + "_lanlu" + ext);
         File.WriteAllText(outFile, json, new UTF8Encoding(false));
         File.WriteAllText(qimiFile, BuildJson(qmtvGroups, epg), new UTF8Encoding(false));
         File.WriteAllText(guluFile, BuildJson(groups.Where(g => g.Name.StartsWith("咕噜·")).ToList(), epg), new UTF8Encoding(false));
+        File.WriteAllText(lanluFile, BuildJson(groups.Where(g => g.Name.StartsWith("澜露·")).ToList(), epg), new UTF8Encoding(false));
 
         int chTotal = groups.Sum(g => g.Chs.Count);
         int urlTotal = groups.Sum(g => g.Chs.Values.Sum(v => v.Count));
-        int qmtvG = 0, qmtvC = 0, guluG = 0, guluC = 0;
+        int qmtvG = 0, qmtvC = 0, guluG = 0, guluC = 0, lanluG = 0, lanluC = 0;
         foreach (Group g in groups)
         {
             if (g.Name.StartsWith("咕噜·")) { guluG++; guluC += g.Chs.Count; }
+            else if (g.Name.StartsWith("澜露·")) { lanluG++; lanluC += g.Chs.Count; }
             else { qmtvG++; qmtvC += g.Chs.Count; }
         }
         Console.WriteLine("\n--------------------------------------------------------");
         Console.WriteLine("总计 分组 " + groups.Count + " | 频道 " + chTotal + " | 线路 " + urlTotal + " | 已过滤广告 " + filteredCount);
-        Console.WriteLine("qmtv 来源: 分组 " + qmtvG + " | 频道 " + qmtvC + "    咕噜来源: 分组 " + guluG + " | 频道 " + guluC);
+        Console.WriteLine("qmtv 来源: 分组 " + qmtvG + " | 频道 " + qmtvC + "    咕噜来源: 分组 " + guluG + " | 频道 " + guluC + "    澜露来源: 分组 " + lanluG + " | 频道 " + lanluC);
         Console.WriteLine("EPG: " + epg);
         Console.WriteLine("已生成: " + outFile + "  (合并)");
         Console.WriteLine("已生成: " + qimiFile + "  (仅 qmtv)");
         Console.WriteLine("已生成: " + guluFile + "  (仅咕噜)");
+        Console.WriteLine("已生成: " + lanluFile + "  (仅澜露)");
         Console.WriteLine("在 FongMi TV / 影视仓 中以本 JSON 文件作为直播配置导入即可");
         Console.WriteLine("--------------------------------------------------------");
     }
@@ -385,6 +398,8 @@ class Program
         string hay = (chName + " " + string.Join(" ", urls.ToArray())).ToLowerInvariant();
         foreach (string kw in adKw)
             if (hay.Contains(kw)) { filteredCount++; return; }
+        foreach (string kw in BLOCK_GROUPS)
+            if (groupName.Contains(kw)) { filteredCount++; return; }
         Group g = groups.FirstOrDefault(x => x.Name == groupName);
         if (g == null) { g = new Group { Name = groupName }; groups.Add(g); }
         List<string> lst;
@@ -392,7 +407,7 @@ class Program
         foreach (string u in urls) if (!lst.Contains(u)) lst.Add(u);
     }
 
-    static void IngestTxt(string text, string srcName)
+    static void IngestTxt(string text, string srcName, string prefix = null)
     {
         string cur = "未分组"; int n = 0;
         foreach (string rawLine in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
@@ -409,7 +424,7 @@ class Program
             if (ci < 1) continue;
             string ch = line.Substring(0, ci).Trim();
             List<string> urls = line.Substring(ci + 1).Split('#').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
-            if (ch.Length > 0 && urls.Count > 0) { AddCh(cur, ch, urls); n++; }
+            if (ch.Length > 0 && urls.Count > 0) { AddCh(prefix == null ? cur : prefix + cur, ch, urls); n++; }
         }
         Console.WriteLine("[" + srcName + "] TXT 解析: " + n + " 个频道");
     }
@@ -539,6 +554,33 @@ class Program
     {
         if (string.IsNullOrEmpty(s)) return "";
         return s.Length <= n ? s : s.Substring(0, n) + "...";
+    }
+
+    // ==================== 澜露央卫订阅 (OKTV 2.6.2 兜底订阅, 优先网络后本地) ====================
+    static void FetchLanlu()
+    {
+        Console.WriteLine("\n[澜露] 拉取 央卫订阅: " + LANLU_URL);
+        byte[] data = null;
+        try { data = HttpGetBytes(LANLU_URL); }
+        catch (Exception ex) { Console.WriteLine("[澜露] 订阅下载失败: " + ex.Message); }
+        if (data == null)
+        {
+            string local = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, LANLU_LOCAL);
+            if (!File.Exists(local)) local = LANLU_LOCAL;   // 兼容从别的工作目录启动
+            if (!File.Exists(local)) throw new Exception("网络不可达且找不到本地文件 " + LANLU_LOCAL);
+            Console.WriteLine("[澜露] 回退本地文件: " + Path.GetFullPath(local));
+            data = File.ReadAllBytes(local);
+        }
+        IngestTxt(DecodeBytes(data), "澜露", "澜露·");
+        int lg = 0, lc = 0, lu = 0;
+        foreach (Group g in groups)
+            if (g.Name.StartsWith("澜露·"))
+            {
+                lg++; lc += g.Chs.Count;
+                foreach (List<string> v in g.Chs.Values) lu += v.Count;
+            }
+        if (lg == 0) throw new Exception("未解析到任何频道");
+        Console.WriteLine("[澜露] 入库: 分组 " + lg + " | 频道 " + lc + " | 线路 " + lu);
     }
 
     // ==================== 生成 FongMi LiveConfig JSON ====================
