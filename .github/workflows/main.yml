@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout fork repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: master
@@ -30,7 +30,7 @@ jobs:
           git merge upstream/master --no-edit --no-ff || true
 
       - name: Push changes
-        uses: ad-m/github-push-action@master
+        uses: ad-m/github-push-action@v4
         with:
           branch: master
           github_token: ${{ secrets.GITHUB_TOKEN }}
