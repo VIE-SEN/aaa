@@ -30,7 +30,7 @@ jobs:
           git merge upstream/master --no-edit --no-ff || true
 
       - name: Push changes
-        uses: ad-m/github-push-action@v4
+        uses: ad-m/github-push-action@master
         with:
           branch: master
           github_token: ${{ secrets.GITHUB_TOKEN }}
